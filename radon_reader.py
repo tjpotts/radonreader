@@ -59,6 +59,10 @@ def GetRadonValue():
          logger.info("-a (mac address) and -t (device type 0|1 not specified, reverting to auto-scan)")
          mRdDeviceAddress, mRdDeviceType = radon_device_finder() #auto find the device
 
+    if mRdDeviceType < 0:
+        logger.error("No RadonEye device found")
+        return
+
     mRadonValueBQ, mRadonValuePCi = radon_device_reader (mRdDeviceAddress , mRdDeviceType) #get data from the device
 
 
