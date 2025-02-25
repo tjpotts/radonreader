@@ -40,6 +40,9 @@ def radon_device_finder():
 			elif 'FR:R2' in name:
 				logger.info('Found RD200 - x<2002 revision with address: ' + device.addr)
 				return device.addr, 0
+			elif 'FR:IL' in name:
+				logger.info('Found RD200 - x>=2022 revision with address: ' + device.addr)
+				return device.addr, 1
 		logger.info('Finished scanning for devices, no devices found')
 		return "", -1
 	except BTLEException as e:
