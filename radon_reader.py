@@ -12,7 +12,7 @@ import paho.mqtt.client as mqtt
 import logging
 import sys
 from bluepy import btle
-from time import sleep
+from time import sleep, time
 from random import randint
 
 from radon_reader_by_handle import radon_device_finder, radon_device_reader, radonDataRAW, ScanDelegate, ReadDelegate, nConnect
@@ -35,6 +35,7 @@ parser.add_argument('-mp',dest='mqtt_port',help='MQTT server service port (Defau
 parser.add_argument('-mu',dest='mqtt_user',help='MQTT server username', required=False)
 parser.add_argument('-mw',dest='mqtt_pw',help='MQTT server password', required=False)
 parser.add_argument('-ma',dest='mqtt_ha',action='store_true',help='Switch to Home Assistant MQTT output (Default: EmonCMS)', required=False)
+parser.add_argument('-r', dest='repeat',help='Repeat the command every X seconds', required=False, default=0)
 args = parser.parse_args()
 
 if (args.mqtt and (args.mqtt_srv == None or args.mqtt_user == None or args.mqtt_pw == None)):
@@ -114,7 +115,17 @@ def GetRadonValue():
         clientMQTT.disconnect()
 
 try:
-    GetRadonValue()
+    if args.repeat == 0:
+        GetRadonValue()
+    else:
+        while True:
+            last_measurement_start = time()
+            GetRadonValue()
+            sleep_time = args.repeat - (time() - last_measurement_start)
+            if sleep_time >0:
+                if args.verbose and not args.silent:
+                    print ("Sleeping for %d seconds..." % sleep_time)
+                time.sleep(sleep_time)
 
 except Exception as e:
     if args.verbose and not args.silent:
