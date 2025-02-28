@@ -7,12 +7,12 @@ __version__     = "0.4.0"
 __author__      = "etoten"
 __date__        = "2021-07-05"
 
-import argparse, struct, time, re, json
+import argparse, struct, time, re, json, datetime
 import paho.mqtt.client as mqtt
 import logging
 import sys
 from bluepy import btle
-from time import sleep, time
+from time import sleep
 from random import randint
 
 from radon_reader_by_handle import radon_device_finder, radon_device_reader, radonDataRAW, ScanDelegate, ReadDelegate, nConnect
@@ -35,7 +35,7 @@ parser.add_argument('-mp',dest='mqtt_port',help='MQTT server service port (Defau
 parser.add_argument('-mu',dest='mqtt_user',help='MQTT server username', required=False)
 parser.add_argument('-mw',dest='mqtt_pw',help='MQTT server password', required=False)
 parser.add_argument('-ma',dest='mqtt_ha',action='store_true',help='Switch to Home Assistant MQTT output (Default: EmonCMS)', required=False)
-parser.add_argument('-r', dest='repeat',help='Repeat the command every X seconds', required=False, default=0)
+parser.add_argument('-r', dest='repeat',type=int,help='Repeat the command every X seconds', required=False, default=0)
 args = parser.parse_args()
 
 if (args.mqtt and (args.mqtt_srv == None or args.mqtt_user == None or args.mqtt_pw == None)):
@@ -82,67 +82,74 @@ def GetRadonValue():
 
 
     if args.silent:
-        print ("%0.2f" % (RadonValue))
+        print("%0.2f" % (RadonValue))
     else:
-        print ("%s - %s - Radon Value: %0.2f %s" % (time.strftime("%Y-%m-%d [%H:%M:%S]"),mRdDeviceAddress,RadonValue,Unit))
+        print("%s - %s - Radon Value: %0.2f %s" % (time.strftime("%Y-%m-%d [%H:%M:%S]"),mRdDeviceAddress,RadonValue,Unit))
 
     if args.mqtt:
         if args.verbose and not args.silent:
-            print ("Sending to MQTT...")
+            logger.info("Sending to MQTT...")
             if args.mqtt_ha:
                 mqtt_out="Home Assistant"
             else:
                 mqtt_out="EmonCMS"
-            print ("MQTT Server: %s | Port: %s | Username: %s | Password: %s | Output: %s" % (args.mqtt_srv, args.mqtt_port, args.mqtt_user, args.mqtt_pw, mqtt_out))
+            logger.info("MQTT Server: %s | Port: %s | Username: %s | Password: %s | Output: %s" % (args.mqtt_srv, args.mqtt_port, args.mqtt_user, args.mqtt_pw, mqtt_out))
 
         # REKey = Last 3 bluetooth address octets (Register/Identify multiple RadonEyes).
         # Sample: D7-21-A0
-        REkey = args.address[9:].replace(":","-")
+        REkey = mRdDeviceAddress[9:].replace(":","-")
 
-        clientMQTT = mqtt.Client("RadonEye_%s" % randint(1000,9999))
-        clientMQTT.username_pw_set(args.mqtt_user,args.mqtt_pw)
+        logger.info("Setting up mqtt Client")
+        clientMQTT = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "RadonEye_%s" % randint(1000,9999))
+        #clientMQTT.username_pw_set(args.mqtt_user,args.mqtt_pw)
         clientMQTT.connect(args.mqtt_srv, args.mqtt_port)
 
         if args.mqtt_ha:
-            ha_var = json.dumps({"radonvalue": "%0.2f" % (RadonValue)})
+            ha_var = json.dumps({
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "radonvalue": "%0.2f" % (RadonValue),
+            })
             clientMQTT.publish("environment/RADONEYE/"+REkey,ha_var,qos=1)
         else:
             clientMQTT.publish("emon/RADONEYE/"+REkey,RadonValue,qos=1)
 
         if args.verbose and not args.silent:
-            print ("OK")
+            logger.info("OK")
+
         sleep(1)
         clientMQTT.disconnect()
 
-try:
-    if args.repeat == 0:
+def run():
+    try:
         GetRadonValue()
-    else:
-        while True:
-            last_measurement_start = time()
-            GetRadonValue()
-            sleep_time = args.repeat - (time() - last_measurement_start)
-            if sleep_time >0:
+    except Exception as e:
+        if args.verbose and not args.silent:
+            logger.error(e, exc_info=True)
+
+        for i in range(1,4):
+            try:
+                logger.debug("Failed, trying again (%s)..." % i)
+                sleep(5)
+                GetRadonValue()
+
+            except Exception as e:
                 if args.verbose and not args.silent:
-                    print ("Sleeping for %d seconds..." % sleep_time)
-                time.sleep(sleep_time)
+                    logger.error(e, exc_info=True)
 
-except Exception as e:
-    if args.verbose and not args.silent:
-        print (e)
+                if i < 3:
+                    continue
+                else:
+                    logger.error("Failed.")
 
-    for i in range(1,4):
-        try:
-            logger.debug("Failed, trying again (%s)..." % i)
-            sleep(5)
-            GetRadonValue()
-
-        except Exception as e:
+if args.repeat == 0:
+    run()
+else:
+    while True:
+        last_measurement_start = time.time()
+        run()
+        sleep_time = args.repeat - (time.time() - last_measurement_start)
+        if sleep_time >0:
             if args.verbose and not args.silent:
-                print (e)
+                logger.info("Sleeping for %d seconds..." % sleep_time)
+            sleep(sleep_time)
 
-            if i < 3:
-                continue
-            else:
-                print ("Failed.")
-        break
