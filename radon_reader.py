@@ -46,7 +46,7 @@ def GetRadonValue():
     if args.verbose and not args.silent:
        logger.setLevel(logging.DEBUG)
     else:
-       logger.setLevel(logging.ERROR)
+       logger.setLevel(logging.INFO)
 
     if args.address != None and args.type != None:
       args.address = args.address.upper()
@@ -124,17 +124,17 @@ def run():
         GetRadonValue()
     except Exception as e:
         if args.verbose and not args.silent:
-            logger.error(e, exc_info=True)
+            logger.error(e, exc_info=args.verbose)
 
         for i in range(1,4):
             try:
-                logger.debug("Failed, trying again (%s)..." % i)
+                logger.info("Failed, trying again (%s)..." % i)
                 sleep(5)
                 GetRadonValue()
 
             except Exception as e:
                 if args.verbose and not args.silent:
-                    logger.error(e, exc_info=True)
+                    logger.error(e, exc_info=args.verbose)
 
                 if i < 3:
                     continue
